@@ -63,6 +63,13 @@ func TestGenerateUniqueIDOrder(t *testing.T) {
 	}
 }
 
+// TestGenerateUniqueUnorderedIDWithClockSkews verifies correctness (uniqueness
+// and unorder) of GenerateUniqueUnorderedID with fake injected clocks with
+// weird behavior.
+func TestGenerateUniqueUnorderedIDWithClockSkews(t *testing.T) {
+
+}
+
 func TestStringToArrayAndBack(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	// s allows us to have a string pointer literal.
