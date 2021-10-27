@@ -207,11 +207,10 @@ func getDescriptorsFromStoreForInterval(
 ) ([]historicalDescriptor, error) {
 	// Create an export request (1 kv call) for all descriptors for given
 	// descriptor ID written during the interval [timestamp, endTimestamp).
-	endTS := hlc.Timestamp{}
+	batchRequestHeader := roachpb.Header{}
 	if upperBound.WallTime != 0 {
-		endTS = upperBound.Prev()
+		batchRequestHeader = roachpb.Header{Timestamp: upperBound.Prev()}
 	}
-	batchRequestHeader := roachpb.Header{Timestamp: endTS}
 	descriptorKey := catalogkeys.MakeDescMetadataKey(codec, id)
 	requestHeader := roachpb.RequestHeader{
 		Key:    descriptorKey,
