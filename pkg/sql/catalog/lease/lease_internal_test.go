@@ -1055,35 +1055,6 @@ func TestLeaseAcquireAndReleaseConcurrently(t *testing.T) {
 	}
 }
 
-type version int
-type testCase struct {
-	before   []version
-	ts       hlc.Timestamp
-	tsStr    string
-	expected []version
-}
-
-// Sets the manager's descriptor state to contain the specific testCase's
-// versions of the descriptor.
-func resetDescriptorState(
-	manager *Manager, tableID descpb.ID, tc testCase, versionDesc func(v version) catalog.Descriptor,
-) {
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
-	descStates := manager.mu.descriptors
-	descStates[tableID] = &descriptorState{m: manager, id: tableID}
-	for _, v := range tc.before {
-		addedDescVState := &descriptorVersionState{
-			t:          descStates[tableID],
-			Descriptor: versionDesc(v),
-		}
-		addedDescVState.mu.Lock()
-		addedDescVState.mu.expiration = hlc.MaxTimestamp
-		addedDescVState.mu.Unlock()
-		descStates[tableID].mu.active.insert(addedDescVState)
-	}
-}
-
 // Tests retrieving older versions within a given start and end timestamp of a
 // table descriptor from store through an ExportRequest.
 func TestReadOlderVersionForTimestamp(t *testing.T) {
@@ -1129,6 +1100,13 @@ func TestReadOlderVersionForTimestamp(t *testing.T) {
 		last.Release(ctx)
 	}
 
+	type version int
+	type testCase struct {
+		before   []version
+		ts       hlc.Timestamp
+		tsStr    string
+		expected []version
+	}
 	versionTS := func(v version) hlc.Timestamp {
 		return descs[v-1].GetModificationTime()
 	}
@@ -1191,40 +1169,41 @@ func TestReadOlderVersionForTimestamp(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%v@%v->%v", tc.before, tc.tsStr, tc.expected), func(t *testing.T) {
 			// Reset the descriptor state to before versions.
-			resetDescriptorState(manager, tableID, tc, versionDesc)
+			resetDescriptorState := func(
+				manager *Manager, tableID descpb.ID, tc testCase,
+			) {
+				{
+					manager.mu.Lock()
+					defer manager.mu.Unlock()
+					descStates := manager.mu.descriptors
+					descStates[tableID] = &descriptorState{m: manager, id: tableID}
+					for _, v := range tc.before {
+						addedDescVState := &descriptorVersionState{
+							t:          descStates[tableID],
+							Descriptor: versionDesc(v),
+						}
+
+						// Set expiration to inf to disable automatic refreshing of leases.
+						addedDescVState.mu.Lock()
+						addedDescVState.mu.expiration = hlc.MaxTimestamp
+						addedDescVState.mu.Unlock()
+						descStates[tableID].mu.active.insert(addedDescVState)
+					}
+				}
+			}
+			resetDescriptorState(manager, tableID, tc)
 
 			// Retrieve historicalDescriptors modification times.
 			retrieved, err := manager.readOlderVersionForTimestamp(ctx, tableID, tc.ts)
 			require.NoError(t, err)
-			var actualTS []hlc.Timestamp
-			var actualVersions []descpb.DescriptorVersion
-			for _, desc := range retrieved {
-				actualTS = append([]hlc.Timestamp{desc.desc.GetModificationTime()}, actualTS...)
-				actualVersions = append([]descpb.DescriptorVersion{desc.desc.GetVersion()}, actualVersions...)
-			}
 
 			// Validate retrieved descriptors match expected versions.
-			var expectedTS []hlc.Timestamp
-			for _, e := range tc.expected {
-				expectedTS = append(expectedTS, versionTS(e))
+			var retrievedVersions []version
+			for _, desc := range retrieved {
+				ver := version(desc.desc.GetVersion())
+				retrievedVersions = append([]version{ver}, retrievedVersions...)
 			}
-
-			func() {
-				manager.mu.Lock()
-				defer manager.mu.Unlock()
-				descStates := manager.mu.descriptors
-				t.Logf("Manager's descriptor state for desc %d: %v", tableID, descStates[tableID].mu.active.data)
-			}()
-
-			require.Equal(t, len(tc.expected), len(actualTS), "\nexpected: %v\nactual: %v\n", expectedTS, actualTS)
-			for i, eTS := range expectedTS {
-				aTS := actualTS[i]
-				require.Equal(t, eTS, aTS, "expected: %v, actual: %v\n", eTS, aTS)
-
-				aVersion := version(actualVersions[i])
-				eVersion := tc.expected[i]
-				require.Equal(t, eVersion, aVersion, "expected: %v, actual : %v\n", eVersion, aVersion)
-			}
+			require.Equal(t, tc.expected, retrievedVersions)
 		})
 	}
 }
