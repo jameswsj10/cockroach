@@ -1198,7 +1198,7 @@ func TestReadOlderVersionForTimestamp(t *testing.T) {
 			require.NoError(t, err)
 
 			// Validate retrieved descriptors match expected versions.
-			var retrievedVersions []version
+			retrievedVersions := make([]version, 0)
 			for _, desc := range retrieved {
 				ver := version(desc.desc.GetVersion())
 				retrievedVersions = append([]version{ver}, retrievedVersions...)
