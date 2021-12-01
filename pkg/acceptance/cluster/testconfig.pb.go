@@ -5,11 +5,12 @@ package cluster
 
 import (
 	fmt "fmt"
+	fmt "fmt"
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	io "io"
-	math "math"
 	math_bits "math/bits"
+	math "math"
 	time "time"
 )
 
@@ -852,3 +853,4 @@ var (
 	ErrIntOverflowTestconfig          = fmt.Errorf("proto: integer overflow")
 	ErrUnexpectedEndOfGroupTestconfig = fmt.Errorf("proto: unexpected end of group")
 )
+
